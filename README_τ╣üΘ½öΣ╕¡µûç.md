@@ -62,3 +62,15 @@ draw_id,date,n1,n2,n3,n4,n5,n6
 - 彩票每期獨立隨機，歷史模式不構成未來中獎優勢。回測只描述歷史樣本，不代表未來表現。
 - iOS PWA 不保證背景執行；此專案按「開啟時更新」設計。
 - HKJC 公開 GraphQL 端點及欄位結構未承諾穩定。上線前必須實測更新函數；目前不能保證端點永遠可用。
+
+## Quantitative Engine v2（新增）
+- 部署前先在 Supabase SQL Editor 執行 `supabase/migrations/202611130001_quant_engine_v2.sql`。此遷移可重複執行，保留舊帳戶、歷史開獎及推薦資料；只新增期別狀態、資料表與版本觸發器。`draws` 的號碼只允許全部為 `NULL` 且狀態為 `PRE_DRAW`；其他狀態由 Check Constraint 強制要求六個號碼及日期。
+- 再部署 `sync-hkjc` Edge Function，並發布包含 `engine-v2.js` 的 PWA 靜態檔案。
+- CSV 匯入、歷史修正及模型版本改變會完整重算；單一期號新增可沿用統計快照增量更新。銷售／派彩更新會記錄資料版本並刷新計算。
+- 修改特徵、權重或校準規則時，需同步遞增 `engine-v2.js` 的 `MODEL_VERSION`，由版本不符觸發完整重算。
+- 生命週期為 `PRE_DRAW`、`NUMBERS_ONLY`、`PRIZE_DATA_READY`、`MODEL_UPDATED`。派彩和中獎單位保留原始數值；未知值用 JSON `null`，不轉成零。
+- HKJC 同步會查詢最近開獎以及未來 14 日日期範圍，嘗試保存官方 `totalInvestment`、`jackpot`、`unitBet`、`estimatedPrize`、`derivedFirstPrizeDiv`、snowball code/name 和各獎級 dividend／winningUnit。下一期預售資料會先以 `PRE_DRAW` 和空號碼儲存。端點是非正式介面，部署後需確認欄位語意與格式；目前查詢沒有已驗證的 Snowball Pool 金額欄位，因此 `snowball_amount` 保持 `NULL`，不會以 jackpot 欄位冒充。
+- Pre-Draw 金多寶及投注額可保存，但目前缺少經驗證的七獎級派彩分布及校準信賴區間，因此 gatekeeper 保守回報 `UNCERTAIN`；未配置校準模型前不會輸出正 EV／SKIP 結論。
+- Anti-Crowd 使用頭三獎歷史實際中獎單位，對照「總投注額 ÷ 每單位投注額 × 該獎級理論中獎率」的 Poisson 預期注數，並以號碼形態分組作收縮估計。UI 標示「基於歷史派彩分薄程度之代理估計（Proxy Estimate）」；它不是玩家實際投注分布，樣本少時尤其不穩定，也不會改變抽中機率。
+- Wheeling 目前提供母池 6 至 18 個號碼的完整六號組合 wheel，精確枚舉母池內的六號結果覆蓋率及總成本。預算不足時會明確指出完整 wheel 不可負擔；不會把未求解的縮減 wheel 宣稱為已驗證。
+- 本版沒有設定外部排程；同步仍在 PWA 開啟或手動更新時執行。資料庫遷移及 Edge Function 尚未部署到任何 Supabase 專案。
