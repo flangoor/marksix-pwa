@@ -1,25 +1,95 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#101827"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="manifest" href="./manifest.webmanifest"><link rel="apple-touch-icon" href="./assets/icon-192.png">
-<title>六合彩數據分析</title><link rel="stylesheet" href="./style.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./assets/icon-192.png">
+<title>六合彩數據分析</title>
+<link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<header><div><small>MARK SIX · DATA LAB</small><h1>六合彩數據分析</h1></div><span id="cloudState" class="pill">未連接</span></header>
+<header>
+  <div>
+    <small>MARK SIX · DATA LAB</small>
+    <h1>六合彩數據分析</h1>
+  </div>
+  <span id="cloudState" class="pill">未連接</span>
+</header>
+
 <main>
-<section class="panel" id="authPanel"><h2>雲端帳戶</h2><p class="muted">輸入電郵以接收登入連結。資料會按帳戶分開儲存。</p><div class="line"><input id="email" type="email" placeholder="你的電郵地址" autocomplete="email"><button id="sendLink">寄出登入連結</button></div><p id="authMsg" class="muted"></p></section>
-<section class="panel hidden" id="appPanel">
-<div class="line spread"><div><h2>資料庫</h2><p id="dbInfo" class="muted">載入中…</p></div><button id="logout" class="secondary">登出</button></div>
-<div class="line wrap"><button id="sync">更新最新開獎</button><button id="generate" class="secondary">重新分析</button><button id="export" class="secondary">匯出 CSV</button><label class="filebtn">匯入歷史 CSV<input id="csvFile" type="file" accept=".csv,text/csv"></label></div>
-<p id="status" class="muted">登入後載入雲端資料。</p>
+<section class="panel" id="authPanel">
+  <h2>雲端帳戶</h2>
+  <p class="muted">使用 Google 帳戶登入，或輸入電郵接收登入連結。資料會按帳戶分開儲存。</p>
+
+  <button id="googleLogin" type="button">使用 Google 帳戶登入</button>
+
+  <div class="line" style="margin-top:16px">
+    <input id="email" type="email" placeholder="你的電郵地址" autocomplete="email">
+    <button id="sendLink" type="button">寄出登入連結</button>
+  </div>
+
+  <p id="authMsg" class="muted"></p>
 </section>
-<section class="panel hidden" id="resultsPanel"><h2>五組建議號碼</h2><p class="muted">每組六個號碼；分數只代表模型排序，不是中獎概率。</p><div id="picks" class="picks"></div></section>
-<section class="panel hidden" id="statsPanel"><h2>歷史統計</h2><div id="stats" class="stats"></div><h3>號碼頻率（全部歷史）</h3><div id="freq" class="freq"></div></section>
-<section class="panel hidden" id="backtestPanel"><h2>Walk-forward 回測</h2><p id="backtest" class="muted">需要足夠歷史資料。</p></section>
-<section class="panel"><h2>使用說明及限制</h2><ul><li>此版本只在開啟 PWA 時同步；iOS 不保證 App 關閉後背景更新。</li><li>首次使用請匯入歷史 CSV，建議欄位：draw_id/date/n1/n2/n3/n4/n5/n6（亦支援常見中文欄名）。</li><li>「更新最新開獎」透過 Supabase Edge Function 查詢 HKJC 公開 GraphQL 端點；若 HKJC 更改介面或限制請求，會顯示錯誤，不會捏造資料。</li><li>六合彩每期開獎獨立，歷史統計不能提高任何一組號碼的客觀中獎機率。請理性參與。</li></ul></section>
+
+<section class="panel hidden" id="appPanel">
+  <div class="line spread">
+    <div>
+      <h2>資料庫</h2>
+      <p id="dbInfo" class="muted">載入中…</p>
+    </div>
+    <button id="logout" class="secondary" type="button">登出</button>
+  </div>
+
+  <div class="line wrap">
+    <button id="sync" type="button">更新最新開獎</button>
+    <button id="generate" class="secondary" type="button">重新分析</button>
+    <button id="export" class="secondary" type="button">匯出 CSV</button>
+    <label class="filebtn">
+      匯入歷史 CSV
+      <input id="csvFile" type="file" accept=".csv,text/csv">
+    </label>
+  </div>
+
+  <p id="status" class="muted">登入後載入雲端資料。</p>
+</section>
+
+<section class="panel hidden" id="resultsPanel">
+  <h2>五組建議號碼</h2>
+  <p class="muted">每組六個號碼；分數只代表模型排序，不是中獎概率。</p>
+  <div id="picks" class="picks"></div>
+</section>
+
+<section class="panel hidden" id="statsPanel">
+  <h2>歷史統計</h2>
+  <div id="stats" class="stats"></div>
+  <h3>號碼頻率（全部歷史）</h3>
+  <div id="freq" class="freq"></div>
+</section>
+
+<section class="panel hidden" id="backtestPanel">
+  <h2>Walk-forward 回測</h2>
+  <p id="backtest" class="muted">需要足夠歷史資料。</p>
+</section>
+
+<section class="panel">
+  <h2>使用說明及限制</h2>
+  <ul>
+    <li>此版本只在開啟 PWA 時同步；iOS 不保證 App 關閉後背景更新。</li>
+    <li>首次使用請匯入歷史 CSV，建議欄位：draw_id/date/n1/n2/n3/n4/n5/n6（亦支援常見中文欄名）。</li>
+    <li>「更新最新開獎」透過 Supabase Edge Function 查詢 HKJC 公開 GraphQL 端點；若 HKJC 更改介面或限制請求，會顯示錯誤，不會捏造資料。</li>
+    <li>六合彩每期開獎獨立，歷史統計不能提高任何一組號碼的客觀中獎機率。請理性參與。</li>
+  </ul>
+</section>
 </main>
+
 <footer>本工具只作歷史資料分析，不提供投注或博彩交易功能。</footer>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="./config.js"></script><script src="./app.js"></script>
-</body></html>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./config.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
