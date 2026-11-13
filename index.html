@@ -35,6 +35,34 @@
   <p id="authMsg" class="muted"></p>
 </section>
 
+<section class="panel hidden" id="preDrawPanel">
+  <h2>售票前 EV Gatekeeper</h2>
+  <p class="muted">輸入下一期估算。未設定經校準的七個獎級派彩模型及不確定區間時，結果會保持「不確定」，不會把不完整估值當作正 EV。</p>
+  <div class="line wrap">
+    <input id="preDrawId" aria-label="期號" placeholder="下一期期號">
+    <input id="preDrawDate" aria-label="預定開獎日期" type="date">
+    <input id="preDrawJackpot" aria-label="金多寶估算" type="number" min="0" step="1" placeholder="金多寶估算（元）">
+    <input id="preDrawSales" aria-label="投注額估算" type="number" min="0" step="1" placeholder="投注額估算（元）">
+    <input id="preDrawCost" aria-label="每注成本" type="number" min="0" step="1" placeholder="每注成本（元）">
+  </div>
+  <p class="muted">EV gate 會在七個獎級的校準派彩分布及有效信賴區間加入後才輸出正 EV 或跳過判定；目前只保存估算輸入並回報不確定。</p>
+  <button id="savePreDraw" type="button">儲存估算並檢查</button>
+  <p id="preDrawResult" class="muted" aria-live="polite"></p>
+</section>
+
+<section class="panel hidden" id="wheelPanel">
+  <h2>Wheeling 覆蓋計算</h2>
+  <p class="muted">完整 wheel 列出母池所有六號組合；只保證開出號碼全部在母池內時有一注全中。這不是整體中獎概率。</p>
+  <div class="line wrap">
+    <input id="wheelPool" aria-label="母池號碼" placeholder="母池號碼，例如 1, 8, 15, 22, 31, 49">
+    <input id="wheelTicketCost" aria-label="每注成本" type="number" min="0" step="1" placeholder="每注成本（元）">
+    <input id="wheelBudget" aria-label="預算上限" type="number" min="0" step="1" placeholder="預算上限（元）">
+    <button id="buildWheel" type="button">計算完整 Wheel</button>
+  </div>
+  <p id="wheelResult" class="muted" aria-live="polite"></p>
+  <details><summary>查看前 50 注</summary><pre id="wheelTickets"></pre></details>
+</section>
+
 <section class="panel hidden" id="appPanel">
   <div class="line spread">
     <div>
@@ -59,7 +87,7 @@
 
 <section class="panel hidden" id="resultsPanel">
   <h2>五組建議號碼</h2>
-  <p class="muted">每組六個號碼；分數只代表模型排序，不是中獎概率。</p>
+  <p class="muted">每組六個號碼；分數只代表模型排序，不是中獎概率。反熱門標籤為「基於歷史派彩分薄程度之代理估計（Proxy Estimate）」，比較官方實際中獎單位與按投注額推算的理論泊松預期；不是玩家投注分布，也不改變開獎概率。</p>
   <div id="picks" class="picks"></div>
 </section>
 
@@ -90,6 +118,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="./config.js"></script>
+<script src="./engine-v2.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

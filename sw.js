@@ -1,10 +1,11 @@
-const CACHE = "marksix-pwa-v2";
+const CACHE = "marksix-pwa-v3";
 
 const ASSETS = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
+  "./engine-v2.js",
   "./config.js",
   "./manifest.webmanifest",
   "./assets/icon-192.png",
