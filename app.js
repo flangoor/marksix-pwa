@@ -277,7 +277,7 @@ async function loadCrowdProxyHistory() {
       if (error) throw error;
       for (const row of data || []) {
         const draw = byId.get(row.draw_id);
-        if (draw && row.actual_sales != null && row.unit_bet != null && Array.isArray(row.prize_data)) {
+        if (draw && row.actual_sales != null && Array.isArray(row.prize_data)) {
           records.push({ id: row.draw_id, nums: draw.nums, date: draw.date, sales: Number(row.actual_sales), unitBet: Number(row.unit_bet), prizes: row.prize_data });
         }
       }
