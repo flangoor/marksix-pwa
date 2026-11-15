@@ -37,7 +37,7 @@
 
 <section class="panel hidden" id="preDrawPanel">
   <h2>售票前 EV Gatekeeper</h2>
-  <p class="muted">輸入下一期估算。未設定經校準的七個獎級派彩模型及不確定區間時，結果會保持「不確定」，不會把不完整估值當作正 EV。</p>
+  <p class="muted">按預估投注額、固定獎金、泊松分獎及至少 30 期有效派彩樣本估算 Expected Return、Net EV、分薄風險與 90% EV 區間。</p>
   <div class="line wrap">
     <input id="preDrawId" aria-label="期號" placeholder="下一期期號">
     <input id="preDrawDate" aria-label="預定開獎日期" type="date">
@@ -45,14 +45,14 @@
     <input id="preDrawSales" aria-label="投注額估算" type="number" min="0" step="1" placeholder="投注額估算（元）">
     <input id="preDrawCost" aria-label="每注成本" type="number" min="0" step="1" placeholder="每注成本（元）">
   </div>
-  <p class="muted">EV gate 會在七個獎級的校準派彩分布及有效信賴區間加入後才輸出正 EV 或跳過判定；目前只保存估算輸入並回報不確定。</p>
+  <p class="muted">敏感度區間採用 crowd 係數 0.7–1.3。有效歷史派彩少於 30 期會標示 INSUFFICIENT DATA。</p>
   <button id="savePreDraw" type="button">儲存估算並檢查</button>
   <p id="preDrawResult" class="muted" aria-live="polite"></p>
 </section>
 
 <section class="panel hidden" id="wheelPanel">
   <h2>Wheeling 覆蓋計算</h2>
-  <p class="muted">完整 wheel 列出母池所有六號組合；只保證開出號碼全部在母池內時有一注全中。這不是整體中獎概率。</p>
+  <p class="muted">Greedy Maximum Coverage 會在預算內選出覆蓋最多指定子集條件的六號組合。</p>
   <div class="line wrap">
     <input id="wheelPool" aria-label="母池號碼" placeholder="母池號碼，例如 1, 8, 15, 22, 31, 49">
     <input id="wheelTicketCost" aria-label="每注成本" type="number" min="0" step="1" placeholder="每注成本（元）">
