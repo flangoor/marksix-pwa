@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   // Bump this version whenever scoring weights, features, or calibration semantics change.
-  const MODEL_VERSION = "quant-v2-core-1";
+  const MODEL_VERSION = "quant-v2-core-2";
   const DRAW_OUTCOMES = 13983816; // C(49, 6)
   const DIVISION_PROBABILITY = { 1: 1 / DRAW_OUTCOMES, 2: 6 / DRAW_OUTCOMES, 3: 252 / DRAW_OUTCOMES };
   const choose = (n, k) => {
@@ -60,42 +60,50 @@
     const fail = (reason, extra = {}) => ({ decision: "INSUFFICIENT DATA", reason, ev: null, netEv: null, roi: null, model: "historical-poisson", ...extra });
     if (![ticketCost, jackpot, estimatedSales].every(Number.isFinite) || ticketCost <= 0 || jackpot < 0 || estimatedSales < 0) return fail("請輸入有效金額；每注成本須大於零。");
     if (payoutSampleCount < 30) return fail(`有效歷史派彩樣本只有 ${payoutSampleCount} 期；至少需要 30 期。`, { payoutSampleCount });
+    // Number of $c lines represented by the estimated turnover.
     const N = estimatedSales / ticketCost;
     const denominator = DRAW_OUTCOMES;
+    // Exact single-line probabilities for the seven HKJC prize divisions.
     const probs = {
       1: 1 / denominator,
       2: 6 / denominator,
       3: 252 / denominator,
       4: choose(6,4) * choose(43,2) / denominator,
-      5: choose(6,3) * choose(1,1) * choose(42,2) / denominator,
+      5: choose(6,3) * choose(42,2) / denominator,
       6: choose(6,3) * choose(42,3) / denominator,
-      7: choose(6,2) * choose(1,1) * choose(42,3) / denominator
+      7: choose(6,2) * choose(42,3) / denominator
     };
     const fixed = {4:9600,5:640,6:320,7:40};
+    // The lower divisions are fixed-prize liabilities across all N sold lines.
     const fixedExpected = [4,5,6,7].reduce((sum,d)=>sum+N*probs[d]*fixed[d],0);
+    // Model the distributable 50% sales pool after fixed-prize liabilities.
     const variablePool = Math.max(0, estimatedSales * 0.5 - fixedExpected);
     const shares = {1:0.45,2:0.15,3:0.40};
     const evaluate = crowd => {
       const top = [1,2,3].reduce((sum,d) => {
-        const lambda = Math.max(0, N * probs[d] * crowd);
-        const shareFactor = lambda === 0 ? 1 : -Math.expm1(-lambda) / lambda;
+        // Poisson sharing: an individual winning line receives pool/(1+other winners).
+        const lambdaOthers = Math.max(0, (N - 1) * probs[d] * crowd);
+        const shareFactor = lambdaOthers === 0 ? 1 : -Math.expm1(-lambdaOthers) / lambdaOthers;
         const pool = d === 1 ? jackpot + variablePool * shares[d] : variablePool * shares[d];
         return sum + probs[d] * pool * shareFactor;
       },0);
       const lower = [4,5,6,7].reduce((sum,d)=>sum+probs[d]*fixed[d],0);
       return { expectedReturn: top + lower, top, lower };
     };
+    // Report the requested 0.7–1.3 crowd-multiplier sensitivity range.
     const low = evaluate(1.3), mid = evaluate(1), high = evaluate(0.7);
     const expectedNetEV = mid.expectedReturn-ticketCost;
     const evLow = low.expectedReturn-ticketCost, evHigh = high.expectedReturn-ticketCost;
-    const risk = (1 - (N*probs[1] === 0 ? 1 : -Math.expm1(-N*probs[1])/(N*probs[1]))) * 100;
+    // Probability at least one other line also wins division one, conditional on our line winning.
+    const headPrizeDilutionRiskPercent = (1 - Math.exp(-Math.max(0, (N - 1) * probs[1]))) * 100;
     return {
       decision: evLow > 0 ? "POSITIVE EV ESTIMATE" : evHigh < 0 ? "SKIP" : "UNCERTAIN",
-      reason: "按歷史資料門檻、官方固定獎金及泊松分獎敏感度估算；非保證回報。",
+      reason: "七個獎級逐注期望值；頭至三獎以 45% / 15% / 40% 分配可分獎池並用泊松模型估算同獎人數。區間為 crowd 係數 0.7–1.3 的敏感度範圍，並非由樣本估出的統計信賴區間。",
       expectedReturn: mid.expectedReturn, ev: mid.expectedReturn, netEv: expectedNetEV, expectedNetEV,
-      roi: expectedNetEV/ticketCost, jackpotShareRiskPercent: risk, headPrizeDilutionRiskPercent: risk,
+      roi: expectedNetEV/ticketCost, jackpotShareRiskPercent: headPrizeDilutionRiskPercent, headPrizeDilutionRiskPercent,
       confidenceInterval90: { low: evLow, high: evHigh }, evLow, evHigh,
-      fixedReturnPerTicket: fixedExpected/N, estimatedTickets: N, payoutSampleCount, model: "historical-poisson"
+      fixedReturnPerTicket: [4,5,6,7].reduce((sum,d)=>sum+probs[d]*fixed[d],0), fixedPrizePoolLiability: fixedExpected,
+      estimatedTickets: N, crowdSensitivity: { low: 0.7, high: 1.3 }, payoutSampleCount, model: "historical-poisson"
     };
   }
 
