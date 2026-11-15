@@ -37,7 +37,7 @@
 
 <section class="panel hidden" id="preDrawPanel">
   <h2>售票前 EV Gatekeeper</h2>
-  <p class="muted">按預估投注額、固定獎金、泊松分獎及至少 30 期有效派彩樣本估算 Expected Return、Net EV、分薄風險與 90% EV 區間。</p>
+  <p class="muted">輸入金多寶及投注額估算後，按七個獎級計算 Expected Return、Net EV 及頭獎分薄風險；派彩樣本少於 30 期先標示資料不足。</p>
   <div class="line wrap">
     <label>期號<input id="preDrawId" aria-label="期號" placeholder="下一期期號"></label>
     <label>攪珠日期<input id="preDrawDate" aria-label="攪珠日期" type="date"></label>
@@ -45,7 +45,7 @@
     <label>投注額估算（元）<input id="preDrawSales" aria-label="投注額估算" type="number" min="0" step="1" placeholder="投注額估算"></label>
     <label>每注成本（元）<input id="preDrawCost" value="10" aria-label="每注成本" type="number" min="0" step="1"></label>
   </div>
-  <p class="muted">敏感度區間採用 crowd 係數 0.7–1.3。有效歷史派彩少於 30 期會標示 INSUFFICIENT DATA。</p>
+  <p class="muted">EV 區間以 crowd 係數 0.7–1.3 作敏感度估算；這是模型範圍，並非統計抽樣信賴區間。有效歷史派彩少於 30 期會標示 INSUFFICIENT DATA。</p>
   <button id="savePreDraw" type="button">儲存估算並檢查</button>
   <p id="preDrawResult" class="muted" aria-live="polite"></p>
 </section>
@@ -89,7 +89,7 @@
 
 <section class="panel hidden" id="resultsPanel">
   <h2>五組建議號碼</h2>
-  <p class="muted">每組六個號碼；分數只代表模型排序，不是中獎概率。反熱門標籤為「基於歷史派彩分薄程度之代理估計（Proxy Estimate）」，比較官方實際中獎單位與按投注額推算的理論泊松預期；不是玩家投注分布，也不改變開獎概率。</p>
+  <p class="muted">每組六個號碼；分數只代表模型排序，不是中獎概率。反熱門標籤為「基於歷史派彩分薄程度之代理估計（Proxy Estimate）」，比較官方實際中獎單位與按投注額推算的理論泊松預期；比例低於 1× 代表歷史實際中獎單位少於泊松預期，排序會優先考慮；高於 1× 會扣分。這不是玩家投注分布，也不改變開獎概率。</p>
   <div id="picks" class="picks"></div>
 </section>
 
