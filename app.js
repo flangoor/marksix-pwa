@@ -554,14 +554,19 @@ function generatePicks(history, candidateCount = 7000, features = engine.fullFea
     }
 
     a.sort((x, y) => x - y);
+    const largeNumberCount = a.filter(n => n >= 32).length;
+    const hasConsecutive = a.slice(1).some((n, i) => n - a[i] === 1);
+    // Hard anti-crowd constraints: at least three non-birthday numbers and no adjacent pair.
+    if (largeNumberCount < 3 || hasConsecutive) continue;
 
     const crowdEstimate = engine.crowdProxy(a, crowdModel);
-    const largeNumberShare = a.filter(n => n >= 32).length / 6;
+    const largeNumberShare = largeNumberCount / 6;
+    const uniqueKey = a.join(",");
     candidates.push({
       nums: a,
-      // Lower observed dilution is rewarded through log(multiplier); structure risk
-      // penalizes birthday/lucky-number patterns, while larger numbers get a modest bonus.
-      score: scoreSet(a, features) - crowdEstimate.riskScore * 2.5 + largeNumberShare * 1.5,
+      uniqueKey,
+      // Anti-crowd structure and empirical dilution dominate; historical frequency is a small tie-break only.
+      score: -crowdEstimate.riskScore * 10 + largeNumberShare * 4 + scoreSet(a, features) * 0.03,
       crowdRisk: crowdEstimate.riskScore,
       crowdEstimate
     });
@@ -572,9 +577,11 @@ function generatePicks(history, candidateCount = 7000, features = engine.fullFea
   const out = [];
   const useCount = new Map();
 
+  const selected = new Set();
   for (const c of candidates) {
-    // Keep each number in at most two of the five recommendations.
-    if (c.nums.some(n => (useCount.get(n) || 0) >= 2)) continue;
+    // Deduplicate exact tickets and keep each number in at most two recommendations.
+    if (selected.has(c.uniqueKey) || c.nums.some(n => (useCount.get(n) || 0) >= 2)) continue;
+    selected.add(c.uniqueKey);
     out.push(c);
     c.nums.forEach(n => useCount.set(n, (useCount.get(n) || 0) + 1));
     if (out.length === 5) break;
