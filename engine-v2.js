@@ -56,39 +56,73 @@
 
   // Computes an explicit model estimate. It cannot call a pre-draw estimate positive
   // unless the caller supplies a calibrated uncertainty interval and all prize tiers.
-  function preDrawGate({ ticketCost, jackpot, estimatedSales, tiers, confidenceInterval, calibrationId }) {
-    const fail = reason => ({ decision: "UNCERTAIN", reason, ev: null, roi: null, model: "estimate" });
-    if (!Number.isFinite(ticketCost) || !(ticketCost > 0) || !Number.isFinite(jackpot) || !(jackpot >= 0) || !Number.isFinite(estimatedSales) || !(estimatedSales >= 0)) return fail("需要有效的每注成本、金多寶及預估投注額。");
-    if (!Array.isArray(tiers) || tiers.length !== 7 || tiers.some(t => !Number.isFinite(t.probability) || !(t.probability >= 0 && t.probability <= 1) || !Number.isFinite(t.expectedPayout) || !(t.expectedPayout >= 0))) return fail("需要完整七個獎級的有效預估派彩模型。");
-    if (!calibrationId) return fail("派彩估算模型尚未提供校準版本。");
-    const pSum = tiers.reduce((s, t) => s + t.probability, 0);
-    if (pSum > 1 + 1e-10) return fail("獎級機率總和超過 1，模型設定無效。");
-    const lambda = Math.max(0, estimatedSales / ticketCost - 1) / DRAW_OUTCOMES;
-    const jackpotShare = lambda === 0 ? jackpot : jackpot * (-Math.expm1(-lambda)) / lambda;
-    const ev = tiers.reduce((s, t) => s + t.probability * t.expectedPayout, 0) + tiers[0].probability * jackpotShare;
-    const netEv = ev - ticketCost;
-    const roi = netEv / ticketCost;
-    if (!confidenceInterval || !Number.isFinite(confidenceInterval.low) || !Number.isFinite(confidenceInterval.high) || confidenceInterval.low > confidenceInterval.high) return { decision: "UNCERTAIN", reason: "欠缺校準模型的不確定區間；不作正 EV 判定。", ev, netEv, roi, jackpotShare, model: "estimate", calibrationId };
-    const decision = confidenceInterval.low > 0 ? "POSITIVE EV ESTIMATE" : confidenceInterval.high < 0 ? "SKIP" : "UNCERTAIN";
-    return { decision, reason: "估值只代表模型估算，不保證未來回報。", ev, netEv, roi, jackpotShare, model: "estimate", calibrationId };
+  function preDrawGate({ ticketCost, jackpot, estimatedSales, payoutSampleCount = 0 }) {
+    const fail = (reason, extra = {}) => ({ decision: "INSUFFICIENT DATA", reason, ev: null, netEv: null, roi: null, model: "historical-poisson", ...extra });
+    if (![ticketCost, jackpot, estimatedSales].every(Number.isFinite) || ticketCost <= 0 || jackpot < 0 || estimatedSales < 0) return fail("請輸入有效金額；每注成本須大於零。");
+    if (payoutSampleCount < 30) return fail(`有效歷史派彩樣本只有 ${payoutSampleCount} 期；至少需要 30 期。`, { payoutSampleCount });
+    const N = estimatedSales / ticketCost;
+    const denominator = DRAW_OUTCOMES;
+    const probs = {
+      1: 1 / denominator,
+      2: 6 / denominator,
+      3: 252 / denominator,
+      4: choose(6,4) * choose(43,2) / denominator,
+      5: choose(6,3) * choose(1,1) * choose(42,2) / denominator,
+      6: choose(6,3) * choose(42,3) / denominator,
+      7: choose(6,2) * choose(1,1) * choose(42,3) / denominator
+    };
+    const fixed = {4:9600,5:640,6:320,7:40};
+    const fixedExpected = [4,5,6,7].reduce((sum,d)=>sum+N*probs[d]*fixed[d],0);
+    const variablePool = Math.max(0, estimatedSales * 0.5 - fixedExpected);
+    const shares = {1:0.45,2:0.15,3:0.40};
+    const evaluate = crowd => {
+      const top = [1,2,3].reduce((sum,d) => {
+        const lambda = Math.max(0, N * probs[d] * crowd);
+        const shareFactor = lambda === 0 ? 1 : -Math.expm1(-lambda) / lambda;
+        const pool = d === 1 ? jackpot + variablePool * shares[d] : variablePool * shares[d];
+        return sum + probs[d] * pool * shareFactor;
+      },0);
+      const lower = [4,5,6,7].reduce((sum,d)=>sum+probs[d]*fixed[d],0);
+      return { expectedReturn: top + lower, top, lower };
+    };
+    const low = evaluate(1.3), mid = evaluate(1), high = evaluate(0.7);
+    const expectedNetEV = mid.expectedReturn-ticketCost;
+    const evLow = low.expectedReturn-ticketCost, evHigh = high.expectedReturn-ticketCost;
+    const risk = (1 - (N*probs[1] === 0 ? 1 : -Math.expm1(-N*probs[1])/(N*probs[1]))) * 100;
+    return {
+      decision: evLow > 0 ? "POSITIVE EV ESTIMATE" : evHigh < 0 ? "SKIP" : "UNCERTAIN",
+      reason: "按歷史資料門檻、官方固定獎金及泊松分獎敏感度估算；非保證回報。",
+      expectedReturn: mid.expectedReturn, ev: mid.expectedReturn, netEv: expectedNetEV, expectedNetEV,
+      roi: expectedNetEV/ticketCost, jackpotShareRiskPercent: risk, headPrizeDilutionRiskPercent: risk,
+      confidenceInterval90: { low: evLow, high: evHigh }, evLow, evHigh,
+      fixedReturnPerTicket: fixedExpected/N, estimatedTickets: N, payoutSampleCount, model: "historical-poisson"
+    };
   }
 
-  // Full wheel for a mother pool: every six-number result wholly inside the pool
-  // is explicitly covered. Refuse huge inputs rather than imply uncomputed coverage.
-  function fullWheel(pool, { ticketCost = null, budget = null } = {}) {
-    const p = [...new Set(pool)].sort((a, b) => a - b);
-    if (p.length < 6 || p.length > 18 || p.some(n => !Number.isInteger(n) || n < 1 || n > 49)) throw new Error("母池需包含 6 至 18 個不重複的 1–49 號碼。");
-    if ((ticketCost !== null && (!Number.isFinite(ticketCost) || ticketCost <= 0)) || (budget !== null && (!Number.isFinite(budget) || budget < 0))) throw new Error("每注成本必須大於零，預算必須是零或正數。");
-    if (budget !== null && ticketCost === null) throw new Error("要核對預算，請同時輸入每注成本。");
-    const tickets = [];
-    function visit(start, row) {
-      if (row.length === 6) { tickets.push([...row]); return; }
-      for (let i = start; i <= p.length - (6 - row.length); i++) { row.push(p[i]); visit(i + 1, row); row.pop(); }
+  // Greedy maximum coverage: cover t-subsets of the mother pool with six-number tickets.
+  function fullWheel(pool, { ticketCost = 10, budget = 0, t = 5, m = 6 } = {}) {
+    const p=[...new Set(pool)].sort((a,b)=>a-b);
+    if(p.length<6||p.length>18||p.some(n=>!Number.isInteger(n)||n<1||n>49)) throw new Error("母池需包含 6 至 18 個不重複的 1–49 號碼。");
+    if(!Number.isInteger(t)||t<1||t>6||!Number.isInteger(m)||m<t||m>p.length) throw new Error("目標條件須為有效 t、m（1 ≤ t ≤ 6，t ≤ m ≤ 母池數量）。");
+    if(!Number.isFinite(ticketCost)||ticketCost<=0||!Number.isFinite(budget)||budget<0) throw new Error("請輸入有效每注成本及預算。");
+    const limit=Math.floor(budget/ticketCost);
+    const subsets=[];
+    function gen(start,row){if(row.length===m){subsets.push([...row]);return;}for(let i=start;i<=p.length-(m-row.length);i++){row.push(p[i]);gen(i+1,row);row.pop();}}
+    gen(0,[]);
+    const covered=new Set(), tickets=[];
+    const combinations=[];
+    function comb(start,row){if(row.length===6){combinations.push([...row]);return;}for(let i=start;i<=p.length-(6-row.length);i++){row.push(p[i]);comb(i+1,row);row.pop();}}
+    comb(0,[]);
+    const targets=subsets.map(s=>{const out=[];function sub(i,row){if(row.length===t){out.push(row.map(x=>s[x]).join(","));return;}for(let j=i;j<s.length;j++){row.push(j);sub(j+1,row);row.pop();}}sub(0,[]);return out;});
+    const ticketCovers=combinations.map(ticket=>{const set=new Set(ticket);const out=[];for(let i=0;i<subsets.length;i++)if(subsets[i].filter(n=>set.has(n)).length>=t)out.push(...targets[i]);return [...new Set(out)];});
+    while(tickets.length<limit&&covered.size<targets.flat().length){
+      let best=-1,bestGain=0;
+      for(let i=0;i<combinations.length;i++){if(tickets.some(x=>x.join(",")===combinations[i].join(",")))continue;let gain=0;for(const key of ticketCovers[i])if(!covered.has(key))gain++;if(gain>bestGain){best=i;bestGain=gain;}}
+      if(best<0||bestGain===0)break;
+      tickets.push(combinations[best]);for(const key of ticketCovers[best])covered.add(key);
     }
-    visit(0, []);
-    const coveredOutcomes = choose(p.length, 6);
-    const totalCost = ticketCost == null ? null : tickets.length * ticketCost;
-    return { tickets, poolSize: p.length, ticketCount: tickets.length, coveredOutcomes, totalPoolOutcomes: coveredOutcomes, coverageWithinPool: 1, ticketCost, budget, totalCost, withinBudget: budget == null || totalCost == null ? null : totalCost <= budget, guarantee: "只保證開出六個號碼全部落在母池內時有一注全中；母池外不作保證。" };
+    const total=targets.reduce((s,x)=>s+x.length,0);
+    return {tickets,poolSize:p.length,ticketCount:tickets.length,coveredOutcomes:covered.size,totalPoolOutcomes:total,coverageWithinPool:total?covered.size/total:0,ticketCost,budget,totalCost:tickets.length*ticketCost,withinBudget:true,t,m,guarantee:`Greedy 覆蓋 ${m} 號子集中的 ${t} 號子集；不代表開獎概率或全中保證。`};
   }
 
   function crowdFeatureKey(sorted) {
@@ -100,10 +134,12 @@
   // Proxy labels compare official winner units with Poisson expected units derived
   // from sales/unit stake and the exact division probabilities for a single line.
   function buildCrowdProxyModel(records) {
-    const groups = new Map(), totalByDivision = { 1: { observed: 0, expected: 0 }, 2: { observed: 0, expected: 0 }, 3: { observed: 0, expected: 0 } }, allDrawIds = new Set();
+    let payoutSampleCount = 0; const groups = new Map(), totalByDivision = { 1: { observed: 0, expected: 0 }, 2: { observed: 0, expected: 0 }, 3: { observed: 0, expected: 0 } }, allDrawIds = new Set();
     for (const row of records || []) {
       if (!validDraw(row.nums) || !(row.sales > 0) || !(row.unitBet > 0)) continue;
       const prizes = Array.isArray(row.prizes) ? row.prizes : [];
+      const tierRows = new Map(prizes.map(p => { const v=String(p.type??"").toLowerCase(); const m=v.match(/(?:^|\\D)([1-7])(?:\\D|$)/); return [m?Number(m[1]):null,p]; }));
+      if ([1,2,3,4,5,6,7].every(d => tierRows.get(d)?.winningUnit != null && tierRows.get(d)?.dividend != null)) payoutSampleCount++;
       const byDivision = new Map();
       for (const p of prizes) {
         const value = String(p.type ?? "").toLowerCase();
@@ -139,7 +175,7 @@
     const serialGroups = Object.fromEntries([...groups].map(([key, value]) => [key, {
       byDivision: Object.fromEntries([1, 2, 3].map(d => [d, { observed: value.byDivision[d].observed, expected: value.byDivision[d].expected, draws: value.byDivision[d].drawIds.size }]))
     }]));
-    return { groups: serialGroups, globalRate, globalRateByDivision, observationCount: allDrawIds.size, label: "actual winning units / Poisson expected units from official turnover, by division 1–3" };
+    return { groups: serialGroups, globalRate, globalRateByDivision, observationCount: allDrawIds.size, payoutSampleCount, label: "actual winning units / Poisson expected units from official turnover, by division 1–3" };
   }
 
   // No player-pick dataset exists. This proxy is an empirical historical payout-dilution estimate.
@@ -161,7 +197,7 @@
     const sampleDraws = group ? Math.max(...[1, 2, 3].map(d => group.byDivision[d].draws)) : (model?.observationCount ?? 0);
     return {
       birthdayShare, consecutivePairs, arithmeticRuns,
-      riskScore: predictedMultiplier ?? structuralScore,
+      riskScore: predictedMultiplier == null ? structuralScore : predictedMultiplier - 1,
       predictedMultiplier,
       sampleDraws,
       status: model?.observationCount ? "PROXY_ESTIMATE" : "STRUCTURE_ONLY",
