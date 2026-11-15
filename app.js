@@ -407,7 +407,7 @@ async function sync(showMessage = true) {
         if (next.jackpot != null) $("preDrawJackpot").value = next.jackpot;
         if (next.totalInvestment != null) $("preDrawSales").value = next.totalInvestment;
         if (next.unitBet != null) $("preDrawCost").value = next.unitBet;
-        $("preDrawResult").textContent = `已同步 HKJC 下一期預售資料 ${String(next.id)}；仍需完成經校準派彩模型才可判定 EV。`;
+        $("preDrawResult").textContent = `已同步 HKJC 下一期預售資料 ${String(next.id)}；填入金多寶及投注額估算後可計算 EV。`;
       }
     }
 
@@ -558,7 +558,7 @@ function generatePicks(history, candidateCount = 7000, features = engine.fullFea
     const crowdEstimate = engine.crowdProxy(a, crowdModel);
     candidates.push({
       nums: a,
-      score: scoreSet(a, features) - crowdEstimate.riskScore * 0.15,
+      score: scoreSet(a, features) - crowdEstimate.riskScore * 2.5,
       crowdRisk: crowdEstimate.riskScore,
       crowdEstimate
     });
