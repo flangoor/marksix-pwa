@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   // Bump this version whenever scoring weights, features, or calibration semantics change.
-  const MODEL_VERSION = "quant-v2-core-3";
+  const MODEL_VERSION = "quant-v2-core-4";
   const DRAW_OUTCOMES = 13983816; // C(49, 6)
   const DIVISION_PROBABILITY = { 1: 1 / DRAW_OUTCOMES, 2: 6 / DRAW_OUTCOMES, 3: 252 / DRAW_OUTCOMES };
   const choose = (n, k) => {
@@ -183,6 +183,19 @@
         allDrawIds.add(drawId);
       }
     }
+    // Detect the known tenfold mismatch between HKD turnover and $1-based
+    // winningUnit counts. Only apply this correction when the pooled raw ratio
+    // is clearly outside the plausible range, so genuine variation is retained.
+    const pooledExpected = [1, 2, 3].reduce((sum, d) => sum + totalByDivision[d].expected, 0);
+    const pooledObserved = [1, 2, 3].reduce((sum, d) => sum + totalByDivision[d].observed, 0);
+    const rawUnitRatio = pooledExpected > 0 ? pooledObserved / pooledExpected : null;
+    const winningUnitScale = rawUnitRatio != null && rawUnitRatio >= 5 && rawUnitRatio <= 20 ? 10 : 1;
+    if (winningUnitScale !== 1) {
+      for (const d of [1, 2, 3]) totalByDivision[d].observed /= winningUnitScale;
+      for (const group of groups.values()) {
+        for (const d of [1, 2, 3]) group.byDivision[d].observed /= winningUnitScale;
+      }
+    }
     const priorStrength = 10;
     const neutralPriorRate = 1;
     const globalRateByDivision = Object.fromEntries([1, 2, 3].map(d => [d,
@@ -193,7 +206,7 @@
     const serialGroups = Object.fromEntries([...groups].map(([key, value]) => [key, {
       byDivision: Object.fromEntries([1, 2, 3].map(d => [d, { observed: value.byDivision[d].observed, expected: value.byDivision[d].expected, draws: value.byDivision[d].drawIds.size }]))
     }]));
-    return { groups: serialGroups, globalRate, globalRateByDivision, observationCount: allDrawIds.size, payoutSampleCount, label: "actual winning units / Poisson expected units from official turnover, by division 1–3" };
+    return { groups: serialGroups, globalRate, globalRateByDivision, observationCount: allDrawIds.size, payoutSampleCount, winningUnitScale, rawUnitRatio, label: "scale-corrected actual winning units / Poisson expected $10 lines, by division 1–3" };
   }
 
   // No player-pick dataset exists. This proxy is an empirical historical payout-dilution estimate.
