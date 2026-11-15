@@ -556,9 +556,12 @@ function generatePicks(history, candidateCount = 7000, features = engine.fullFea
     a.sort((x, y) => x - y);
 
     const crowdEstimate = engine.crowdProxy(a, crowdModel);
+    const largeNumberShare = a.filter(n => n >= 32).length / 6;
     candidates.push({
       nums: a,
-      score: scoreSet(a, features) - crowdEstimate.riskScore * 2.5,
+      // Lower observed dilution is rewarded through log(multiplier); structure risk
+      // penalizes birthday/lucky-number patterns, while larger numbers get a modest bonus.
+      score: scoreSet(a, features) - crowdEstimate.riskScore * 2.5 + largeNumberShare * 1.5,
       crowdRisk: crowdEstimate.riskScore,
       crowdEstimate
     });
@@ -567,19 +570,14 @@ function generatePicks(history, candidateCount = 7000, features = engine.fullFea
   candidates.sort((a, b) => b.score - a.score);
 
   const out = [];
+  const useCount = new Map();
 
   for (const c of candidates) {
-
-    if (
-      out.every(p =>
-        p.nums.filter(n => c.nums.includes(n)).length <= 3
-      )
-    ) {
-
-      out.push(c);
-
-      if (out.length === 5) break;
-    }
+    // Keep each number in at most two of the five recommendations.
+    if (c.nums.some(n => (useCount.get(n) || 0) >= 2)) continue;
+    out.push(c);
+    c.nums.forEach(n => useCount.set(n, (useCount.get(n) || 0) + 1));
+    if (out.length === 5) break;
   }
 
   return out;
