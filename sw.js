@@ -1,4 +1,4 @@
-const CACHE = "marksix-pwa-v3";
+const CACHE = "marksix-pwa-v4";
 
 const ASSETS = [
   "./",
