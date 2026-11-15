@@ -465,7 +465,7 @@ $("savePreDraw").onclick = async () => {
   if (drawReadError) { $("preDrawResult").textContent = "讀取期別失敗：" + drawReadError.message; return; }
   const drawDate = drawDateInput || existingDraw?.draw_date || null;
   const observedAt = new Date().toISOString();
-  const gate = engine.preDrawGate({ ticketCost, jackpot, estimatedSales: sales });
+  const gate = engine.preDrawGate({ ticketCost, jackpot, estimatedSales: sales, payoutSampleCount: crowdModel.payoutSampleCount || 0 });
   if (!existingDraw) {
     const { error: drawInsertError } = await sb.from("draws").insert({ user_id: user.id, draw_id: drawId, draw_date: drawDate, lifecycle_state: "PRE_DRAW", n1: null, n2: null, n3: null, n4: null, n5: null, n6: null, extra: null, source: "Pre-draw estimate" });
     if (drawInsertError) { $("preDrawResult").textContent = "保存 PRE_DRAW 期別失敗：" + drawInsertError.message; return; }
@@ -487,7 +487,7 @@ $("savePreDraw").onclick = async () => {
     return;
   }
   let resultText = gate.decision + "：" + gate.reason;
-  if (gate.ev != null) resultText += " 預估 EV " + gate.ev.toFixed(2) + " 元；ROI " + (gate.roi * 100).toFixed(1) + "%。";
+  if (gate.ev != null) resultText += ` 預期回報 ${gate.expectedReturn.toFixed(2)}；淨 EV ${gate.expectedNetEV.toFixed(2)}；頭獎分薄風險 ${gate.headPrizeDilutionRiskPercent.toFixed(1)}%；90% EV 區間 [${gate.evLow.toFixed(2)}, ${gate.evHigh.toFixed(2)}]。`;
   $("preDrawResult").textContent = "PRE_DRAW 已保存 · " + resultText;
   const { data: versionRow } = await sb.from("engine_data_versions").select("current_version").eq("user_id", user.id).maybeSingle();
   const { error: runError } = await sb.from("engine_runs").insert({ user_id: user.id, run_mode: "PRE_DRAW", trigger_reason: "pre_draw_gatekeeper", draw_id: drawId, model_version: engine.MODEL_VERSION, data_version: Number(versionRow?.current_version || 0), status: "COMPLETED", result_summary: { ...gate, inputs: { jackpot, estimatedSales: sales, ticketCost } }, started_at: observedAt, completed_at: new Date().toISOString() });
@@ -499,7 +499,7 @@ $("buildWheel").onclick = () => {
     const pool = $("wheelPool").value.split(/[\s,，;；]+/).filter(Boolean).map(Number);
     const costValue = $("wheelTicketCost").value;
     const budgetValue = $("wheelBudget").value;
-    const result = engine.fullWheel(pool, { ticketCost: costValue === "" ? null : Number(costValue), budget: budgetValue === "" ? null : Number(budgetValue) });
+    const result = engine.fullWheel(pool, { ticketCost: costValue === "" ? 10 : Number(costValue), budget: budgetValue === "" ? 0 : Number(budgetValue), t: Number($("wheelT").value || 4), m: Number($("wheelM").value || 5) });
     if (result.totalCost !== null && result.withinBudget === false) {
       $("wheelResult").textContent = "完整 wheel 需要 " + result.ticketCount.toLocaleString() + " 注，共 " + result.totalCost.toLocaleString() + " 元，超出預算；本工具不會把未求解的縮減 wheel 標成已驗證覆蓋率。" + result.guarantee;
     } else {
