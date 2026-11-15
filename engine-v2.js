@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   // Bump this version whenever scoring weights, features, or calibration semantics change.
-  const MODEL_VERSION = "quant-v2-core-2";
+  const MODEL_VERSION = "quant-v2-core-3";
   const DRAW_OUTCOMES = 13983816; // C(49, 6)
   const DIVISION_PROBABILITY = { 1: 1 / DRAW_OUTCOMES, 2: 6 / DRAW_OUTCOMES, 3: 252 / DRAW_OUTCOMES };
   const choose = (n, k) => {
@@ -68,10 +68,10 @@
       1: 1 / denominator,
       2: 6 / denominator,
       3: 252 / denominator,
-      4: choose(6,4) * choose(43,2) / denominator,
-      5: choose(6,3) * choose(42,2) / denominator,
-      6: choose(6,3) * choose(42,3) / denominator,
-      7: choose(6,2) * choose(42,3) / denominator
+      4: choose(6,4) * 1 * choose(42,1) / denominator,
+      5: choose(6,4) * choose(42,2) / denominator,
+      6: choose(6,3) * 1 * choose(42,2) / denominator,
+      7: choose(6,3) * choose(42,3) / denominator
     };
     const fixed = {4:9600,5:640,6:320,7:40};
     // The lower divisions are fixed-prize liabilities across all N sold lines.
@@ -142,6 +142,8 @@
   // from sales/unit stake and the exact division probabilities for a single line.
   function buildCrowdProxyModel(records) {
     let payoutSampleCount = 0; const groups = new Map(), totalByDivision = { 1: { observed: 0, expected: 0 }, 2: { observed: 0, expected: 0 }, 3: { observed: 0, expected: 0 } }, allDrawIds = new Set();
+    // HKJC sales are HKD, while winningUnit counts $10 Mark Six lines.
+    // Normalize sales to $10 lines directly; unitBet metadata may describe a $1 stake unit.
     for (const row of records || []) {
       if (!validDraw(row.nums) || !(row.sales > 0) || !(row.unitBet > 0)) continue;
       const prizes = Array.isArray(row.prizes) ? row.prizes : [];
@@ -161,7 +163,7 @@
       const key = crowdFeatureKey([...row.nums].sort((a, b) => a - b));
       for (const division of [1, 2, 3]) {
         if (!byDivision.has(division)) continue;
-        const expected = (row.sales / row.unitBet) * DIVISION_PROBABILITY[division];
+        const expected = (row.sales / 10) * DIVISION_PROBABILITY[division];
         if (!(expected > 0)) continue;
         if (!groups.has(key)) groups.set(key, { byDivision: { 1: { observed: 0, expected: 0, drawIds: new Set() }, 2: { observed: 0, expected: 0, drawIds: new Set() }, 3: { observed: 0, expected: 0, drawIds: new Set() } } });
         const group = groups.get(key);
@@ -177,7 +179,11 @@
       }
     }
     const priorStrength = 10;
-    const globalRateByDivision = Object.fromEntries([1, 2, 3].map(d => [d, (totalByDivision[d].observed + priorStrength) / (totalByDivision[d].expected + priorStrength)]));
+    const neutralPriorRate = 1;
+    const globalRateByDivision = Object.fromEntries([1, 2, 3].map(d => [d,
+      (totalByDivision[d].observed + priorStrength * neutralPriorRate) /
+      (totalByDivision[d].expected + priorStrength)
+    ]));
     const globalRate = [1, 2, 3].reduce((sum, d) => sum + DIVISION_PROBABILITY[d] * globalRateByDivision[d], 0) / [1, 2, 3].reduce((sum, d) => sum + DIVISION_PROBABILITY[d], 0);
     const serialGroups = Object.fromEntries([...groups].map(([key, value]) => [key, {
       byDivision: Object.fromEntries([1, 2, 3].map(d => [d, { observed: value.byDivision[d].observed, expected: value.byDivision[d].expected, draws: value.byDivision[d].drawIds.size }]))
@@ -192,19 +198,23 @@
     const birthdayShare = sorted.filter(n => n <= 31).length / 6;
     const consecutivePairs = sorted.slice(1).filter((n, i) => n - sorted[i] === 1).length;
     const arithmeticRuns = [3, 4, 5].filter(step => sorted.slice(1).every((n, i) => n - sorted[i] === step)).length;
-    const structuralScore = birthdayShare * 0.5 + consecutivePairs * 0.15 + arithmeticRuns * 0.3;
+    const luckyNumbers = new Set([6, 8, 9, 18, 28]);
+    const luckyCount = sorted.filter(n => luckyNumbers.has(n)).length;
+    // Positive values are crowd risks: birthdays, sequences and culturally popular picks are penalized.
+    const structuralScore = birthdayShare * 1.1 + consecutivePairs * 0.2 + arithmeticRuns * 0.35 + luckyCount * 0.2;
     const group = model?.groups?.[crowdFeatureKey(sorted)];
     const divisionMultipliers = model?.globalRateByDivision ? Object.fromEntries([1, 2, 3].map(d => {
       const local = group?.byDivision?.[d];
       const prior = model.globalRateByDivision[d];
-      return [d, local ? (local.observed + 10 * prior) / (local.expected + 10) : prior];
+      const priorStrength = 10;
+      return [d, local ? (local.observed + priorStrength * prior) / (local.expected + priorStrength) : prior];
     })) : null;
     const totalProbability = [1, 2, 3].reduce((sum, d) => sum + DIVISION_PROBABILITY[d], 0);
     const predictedMultiplier = divisionMultipliers ? [1, 2, 3].reduce((sum, d) => sum + DIVISION_PROBABILITY[d] * divisionMultipliers[d], 0) / totalProbability : null;
     const sampleDraws = group ? Math.max(...[1, 2, 3].map(d => group.byDivision[d].draws)) : (model?.observationCount ?? 0);
     return {
       birthdayShare, consecutivePairs, arithmeticRuns,
-      riskScore: predictedMultiplier == null ? structuralScore : predictedMultiplier - 1,
+      riskScore: structuralScore + (predictedMultiplier == null ? 0 : Math.log(Math.max(0.1, predictedMultiplier))),
       predictedMultiplier,
       sampleDraws,
       status: model?.observationCount ? "PROXY_ESTIMATE" : "STRUCTURE_ONLY",
