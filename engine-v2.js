@@ -145,7 +145,7 @@
     // HKJC sales are HKD, while winningUnit counts $10 Mark Six lines.
     // Normalize sales to $10 lines directly; unitBet metadata may describe a $1 stake unit.
     for (const row of records || []) {
-      if (!validDraw(row.nums) || !(row.sales > 0) || !(row.unitBet > 0)) continue;
+      if (!validDraw(row.nums) || !(row.sales > 0)) continue;
       const prizes = Array.isArray(row.prizes) ? row.prizes : [];
       const tierRows = new Map(prizes.map(p => { const v=String(p.type??"").toLowerCase(); const m=v.match(/(?:^|\\D)([1-7])(?:\\D|$)/); return [m?Number(m[1]):null,p]; }));
       if ([1,2,3,4,5,6,7].every(d => tierRows.get(d)?.winningUnit != null && tierRows.get(d)?.dividend != null)) payoutSampleCount++;
