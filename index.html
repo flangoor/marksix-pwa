@@ -39,11 +39,11 @@
   <h2>售票前 EV Gatekeeper</h2>
   <p class="muted">按預估投注額、固定獎金、泊松分獎及至少 30 期有效派彩樣本估算 Expected Return、Net EV、分薄風險與 90% EV 區間。</p>
   <div class="line wrap">
-    <input id="preDrawId" aria-label="期號" placeholder="下一期期號">
-    <input id="preDrawDate" aria-label="預定開獎日期" type="date">
-    <input id="preDrawJackpot" aria-label="金多寶估算" type="number" min="0" step="1" placeholder="金多寶估算（元）">
-    <input id="preDrawSales" aria-label="投注額估算" type="number" min="0" step="1" placeholder="投注額估算（元）">
-    <input id="preDrawCost" aria-label="每注成本" type="number" min="0" step="1" placeholder="每注成本（元）">
+    <label>期號<input id="preDrawId" aria-label="期號" placeholder="下一期期號"></label>
+    <label>攪珠日期<input id="preDrawDate" aria-label="攪珠日期" type="date"></label>
+    <label>金多寶估算（元）<input id="preDrawJackpot" aria-label="金多寶估算" type="number" min="0" step="1" placeholder="金多寶估算"></label>
+    <label>投注額估算（元）<input id="preDrawSales" aria-label="投注額估算" type="number" min="0" step="1" placeholder="投注額估算"></label>
+    <label>每注成本（元）<input id="preDrawCost" value="10" aria-label="每注成本" type="number" min="0" step="1"></label>
   </div>
   <p class="muted">敏感度區間採用 crowd 係數 0.7–1.3。有效歷史派彩少於 30 期會標示 INSUFFICIENT DATA。</p>
   <button id="savePreDraw" type="button">儲存估算並檢查</button>
@@ -57,7 +57,9 @@
     <input id="wheelPool" aria-label="母池號碼" placeholder="母池號碼，例如 1, 8, 15, 22, 31, 49">
     <input id="wheelTicketCost" aria-label="每注成本" type="number" min="0" step="1" placeholder="每注成本（元）">
     <input id="wheelBudget" aria-label="預算上限" type="number" min="0" step="1" placeholder="預算上限（元）">
-    <button id="buildWheel" type="button">計算完整 Wheel</button>
+    <input id="wheelT" aria-label="要求至少命中號碼 t" type="number" min="1" max="6" value="4" placeholder="t 值">
+    <input id="wheelM" aria-label="開出號碼母池命中數 m" type="number" min="4" max="18" value="5" placeholder="m 值">
+    <button id="buildWheel" type="button">計算預算 Wheel</button>
   </div>
   <p id="wheelResult" class="muted" aria-live="polite"></p>
   <details><summary>查看前 50 注</summary><pre id="wheelTickets"></pre></details>
