@@ -500,11 +500,7 @@ $("buildWheel").onclick = () => {
     const costValue = $("wheelTicketCost").value;
     const budgetValue = $("wheelBudget").value;
     const result = engine.fullWheel(pool, { ticketCost: costValue === "" ? 10 : Number(costValue), budget: budgetValue === "" ? 0 : Number(budgetValue), t: Number($("wheelT").value || 4), m: Number($("wheelM").value || 5) });
-    if (result.totalCost !== null && result.withinBudget === false) {
-      $("wheelResult").textContent = "完整 wheel 需要 " + result.ticketCount.toLocaleString() + " 注，共 " + result.totalCost.toLocaleString() + " 元，超出預算；本工具不會把未求解的縮減 wheel 標成已驗證覆蓋率。" + result.guarantee;
-    } else {
-      $("wheelResult").textContent = result.poolSize + " 個母池號碼，" + result.ticketCount.toLocaleString() + " 注；母池內六號結果覆蓋 " + result.coveredOutcomes.toLocaleString() + " / " + result.totalPoolOutcomes.toLocaleString() + " (" + (result.coverageWithinPool * 100).toFixed(2) + "%)。" + (result.totalCost == null ? "" : " 總成本 " + result.totalCost.toLocaleString() + " 元。") + result.guarantee;
-    }
+    $("wheelResult").textContent = `在預算 ${result.budget.toLocaleString()} 元內，已覆蓋 ${result.coveredOutcomes.toLocaleString()} / ${result.totalPoolOutcomes.toLocaleString()} 個 ${result.m}-號子集（覆蓋率 ${(result.coverageWithinPool*100).toFixed(2)}%）；選出 ${result.ticketCount} 注，成本 ${result.totalCost.toLocaleString()} 元。` + result.guarantee;
     $("wheelTickets").textContent = result.tickets.slice(0, 50).map(t => t.join(" ")).join("\n") + (result.tickets.length > 50 ? "\n…其餘 " + (result.tickets.length - 50) + " 注" : "");
   } catch (e) { $("wheelResult").textContent = e.message; $("wheelTickets").textContent = ""; }
 };
