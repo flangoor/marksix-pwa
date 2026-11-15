@@ -12,6 +12,14 @@
     return Math.round(x);
   };
   const validDraw = a => Array.isArray(a) && a.length === 6 && a.every(n => Number.isInteger(n) && n >= 1 && n <= 49) && new Set(a).size === 6;
+  function prizeDivision(type) {
+    const value = String(type ?? "").toLowerCase();
+    const numeric = value.match(/(?:^|\D)([1-7])(?:\D|$)/);
+    if (numeric) return Number(numeric[1]);
+    const names = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7 };
+    const match = value.match(/\b(first|second|third|fourth|fifth|sixth|seventh)\b/);
+    return match ? names[match[1]] : null;
+  }
 
   function fullFeatures(draws) {
     const frequency = Array(50).fill(0), gap = Array(50).fill(draws.length), recent = [];
@@ -147,14 +155,11 @@
     for (const row of records || []) {
       if (!validDraw(row.nums) || !(row.sales > 0)) continue;
       const prizes = Array.isArray(row.prizes) ? row.prizes : [];
-      const tierRows = new Map(prizes.map(p => { const v=String(p.type??"").toLowerCase(); const m=v.match(/(?:^|\\D)([1-7])(?:\\D|$)/); return [m?Number(m[1]):null,p]; }));
+      const tierRows = new Map(prizes.map(p => [prizeDivision(p.type), p]));
       if ([1,2,3,4,5,6,7].every(d => tierRows.get(d)?.winningUnit != null && tierRows.get(d)?.dividend != null)) payoutSampleCount++;
       const byDivision = new Map();
       for (const p of prizes) {
-        const value = String(p.type ?? "").toLowerCase();
-        const m = value.match(/(?:^|\D)([123])(?:\D|$)/);
-        const wordMap = value.includes("first") ? 1 : value.includes("second") ? 2 : value.includes("third") ? 3 : null;
-        const division = m ? Number(m[1]) : wordMap;
+        const division = prizeDivision(p.type);
         if (division && p.winningUnit != null) byDivision.set(division, Number(p.winningUnit));
       }
       // Exclude the whole draw if a first/second/third winning-unit field is
