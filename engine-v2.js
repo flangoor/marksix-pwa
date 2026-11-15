@@ -113,15 +113,14 @@
     const combinations=[];
     function comb(start,row){if(row.length===6){combinations.push([...row]);return;}for(let i=start;i<=p.length-(6-row.length);i++){row.push(p[i]);comb(i+1,row);row.pop();}}
     comb(0,[]);
-    const targets=subsets.map(s=>{const out=[];function sub(i,row){if(row.length===t){out.push(row.map(x=>s[x]).join(","));return;}for(let j=i;j<s.length;j++){row.push(j);sub(j+1,row);row.pop();}}sub(0,[]);return out;});
-    const ticketCovers=combinations.map(ticket=>{const set=new Set(ticket);const out=[];for(let i=0;i<subsets.length;i++)if(subsets[i].filter(n=>set.has(n)).length>=t)out.push(...targets[i]);return [...new Set(out)];});
-    while(tickets.length<limit&&covered.size<targets.flat().length){
+    const ticketCovers=combinations.map(ticket=>subsets.map((s,i)=>s.filter(n=>ticket.includes(n)).length>=t?i:-1).filter(i=>i>=0));
+    while(tickets.length<limit&&covered.size<subsets.length){
       let best=-1,bestGain=0;
       for(let i=0;i<combinations.length;i++){if(tickets.some(x=>x.join(",")===combinations[i].join(",")))continue;let gain=0;for(const key of ticketCovers[i])if(!covered.has(key))gain++;if(gain>bestGain){best=i;bestGain=gain;}}
       if(best<0||bestGain===0)break;
       tickets.push(combinations[best]);for(const key of ticketCovers[best])covered.add(key);
     }
-    const total=targets.reduce((s,x)=>s+x.length,0);
+    const total=subsets.length;
     return {tickets,poolSize:p.length,ticketCount:tickets.length,coveredOutcomes:covered.size,totalPoolOutcomes:total,coverageWithinPool:total?covered.size/total:0,ticketCost,budget,totalCost:tickets.length*ticketCost,withinBudget:true,t,m,guarantee:`Greedy 覆蓋 ${m} 號子集中的 ${t} 號子集；不代表開獎概率或全中保證。`};
   }
 
