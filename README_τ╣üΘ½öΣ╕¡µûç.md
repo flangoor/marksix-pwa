@@ -87,4 +87,4 @@ draw_id,date,n1,n2,n3,n4,n5,n6
 - Pre-Draw 金多寶及投注額可保存，但目前缺少經驗證的七獎級派彩分布及校準信賴區間，因此 gatekeeper 保守回報 `UNCERTAIN`；未配置校準模型前不會輸出正 EV／SKIP 結論。
 - Anti-Crowd 使用頭三獎歷史實際中獎單位，對照「總投注額 ÷ 每單位投注額 × 該獎級理論中獎率」的 Poisson 預期注數，並以號碼形態分組作收縮估計。UI 標示「基於歷史派彩分薄程度之代理估計（Proxy Estimate）」；它不是玩家實際投注分布，樣本少時尤其不穩定，也不會改變抽中機率。
 - Wheeling 目前提供母池 6 至 18 個號碼的完整六號組合 wheel，精確枚舉母池內的六號結果覆蓋率及總成本。預算不足時會明確指出完整 wheel 不可負擔；不會把未求解的縮減 wheel 宣稱為已驗證。
-- 背景排程必須完成上方 Supabase secret、GitHub Actions secrets 及 workflow 部署步驟；只有 workflow 成功執行後，才可確認背景同步正常。
+- 背景排程必須完成上方 Edge Function secret、Supabase Vault secret 及 Cron job 設定；只有確認 Cron job 啟用且 HTTP 同步回報成功後，才算背景同步正常。

@@ -74,5 +74,5 @@ draw_id,date,n1,n2,n3,n4,n5,n6
 - 回測按日期由舊至新 walk-forward；每期只使用之前的開獎與派彩資料，不讀取該期或未來資料，並與五組隨機號碼作參考比較。
 - 目前推薦演算法是可解釋的統計啟發式模型，不是已訓練的機器學習模型。
 - 彩票每期獨立隨機，歷史模式不構成未來中獎優勢。回測只描述歷史樣本，不代表未來表現。
-- 背景排程需完成上方 Supabase secret、GitHub Actions secrets 及 workflow 設定；只有 workflow 成功執行後，才可確認背景同步正常。
+- 背景排程需完成上方 Edge Function secret、Supabase Vault secret 及 Cron job 設定；只有確認 Cron job 啟用且 HTTP 同步回報成功後，才算背景同步正常。
 - HKJC 公開 GraphQL 端點及欄位結構未承諾穩定。上線前必須實測更新函數；目前不能保證端點永遠可用。
