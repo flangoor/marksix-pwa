@@ -10,10 +10,18 @@ const configured =
   cfg.SUPABASE_ANON_KEY &&
   !cfg.SUPABASE_ANON_KEY.includes("YOUR_");
 
-let sb, user, draws = [], picks = [];
+let sb, user, draws = [], picks = [], crowdHistory = [];
 let activeBootUserId = null;
 const engine = window.MarkSixEngineV2;
 let crowdModel = engine.buildCrowdProxyModel([]);
+const featureWindows = () => {
+  const medium = Number(localStorage.getItem("marksix-medium-window"));
+  const short = Number(localStorage.getItem("marksix-short-window"));
+  return {
+    mediumWindow: [100, 150, 200].includes(medium) ? medium : 150,
+    shortWindow: [20, 35, 50].includes(short) ? short : 35
+  };
+};
 
 const show = (id, on = true) =>
   $(id).classList.toggle("hidden", !on);
@@ -22,6 +30,19 @@ const msg = s => $("status").textContent = s;
 
 const redirectUrl =
   window.location.origin + window.location.pathname;
+
+for (const [id, key, fallback] of [["mediumWindow", "marksix-medium-window", 150], ["shortWindow", "marksix-short-window", 35]]) {
+  const input = $(id);
+  if (!input) continue;
+  input.value = String(featureWindows()[id === "mediumWindow" ? "mediumWindow" : "shortWindow"] || fallback);
+  input.addEventListener("change", async () => {
+    localStorage.setItem(key, input.value);
+    if (!user) return;
+    await generate({ forceFull: true, reason: "feature_window_changed" });
+    render();
+    msg("已按新的趨勢期數重新分析。");
+  });
+}
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -252,6 +273,7 @@ async function loadDraws() {
       d.n4, d.n5, d.n6
     ].map(Number)
   })).filter(d => valid(d.nums));
+  draws.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   await loadCrowdProxyHistory();
 
   $("dbInfo").textContent =
@@ -264,6 +286,15 @@ async function loadDraws() {
     const { data: market } = await sb.from("draw_market_data").select("lifecycle_state").eq("user_id", user.id).eq("draw_id", draws.at(-1).id).maybeSingle();
     const state = market?.lifecycle_state || draws.at(-1).lifecycleState || "NUMBERS_ONLY";
     $("dbInfo").textContent += ` · 資料狀態 ${state}`;
+  }
+  if (user) {
+    const { data: syncState } = await sb.from("draw_sync_status").select("status,initial_backfill_complete,oldest_date,latest_date,synced_at,last_error").eq("user_id", user.id).maybeSingle();
+    if (syncState) {
+      const synced = syncState.synced_at ? new Date(syncState.synced_at).toLocaleString() : "未曾同步";
+      $("dbInfo").textContent += syncState.status === "COMPLETED"
+        ? ` · 自動同步 ${syncState.initial_backfill_complete ? "歷史回填完成" : "歷史回填未完成"} · ${synced}`
+        : ` · 同步狀態 ${syncState.status}${syncState.last_error ? `：${syncState.last_error}` : ""}`;
+    }
   }
 }
 
@@ -284,8 +315,10 @@ async function loadCrowdProxyHistory() {
       if (!data || data.length < 1000) break;
       from += 1000;
     }
+    crowdHistory = records;
     crowdModel = engine.buildCrowdProxyModel(records);
   } catch {
+    crowdHistory = [];
     crowdModel = engine.buildCrowdProxyModel([]);
   }
 }
@@ -377,25 +410,20 @@ async function sync(showMessage = true) {
           source: "HKJC GraphQL"
         }));
 
-      const { data: existingDrawStates, error: stateError } = await sb.from("draws").select("draw_id,lifecycle_state").eq("user_id", user.id).in("draw_id", payload.map(r => r.draw_id));
-      if (stateError) throw stateError;
-      const stateById = new Map((existingDrawStates || []).map(d => [d.draw_id, d.lifecycle_state]));
-      payload.forEach(r => {
-        const previousState = stateById.get(r.draw_id);
-        r.lifecycle_state = previousState && previousState !== "PRE_DRAW" ? previousState : "NUMBERS_ONLY";
-      });
-
-      if (payload.length) {
-
-        const { error: e } = await sb
-          .from("draws")
-          .upsert(payload, {
-            onConflict: "user_id,draw_id"
-          });
-
+      for (let i = 0; i < payload.length; i += 400) {
+        const part = payload.slice(i, i + 400);
+        const { data: existingDrawStates, error: stateError } = await sb.from("draws").select("draw_id,lifecycle_state").eq("user_id", user.id).in("draw_id", part.map(r => r.draw_id));
+        if (stateError) throw stateError;
+        const stateById = new Map((existingDrawStates || []).map(d => [d.draw_id, d.lifecycle_state]));
+        part.forEach(r => {
+          const previousState = stateById.get(r.draw_id);
+          r.lifecycle_state = previousState && previousState !== "PRE_DRAW" ? previousState : "NUMBERS_ONLY";
+        });
+        const { error: e } = await sb.from("draws").upsert(part, { onConflict: "user_id,draw_id" });
         if (e) throw e;
+        const partIds = new Set(part.map(r => r.draw_id));
+        await saveOfficialMarketRows(rows.filter(r => partIds.has(String(r.id))), data?.observedAt);
       }
-      await saveOfficialMarketRows(rows, data?.observedAt);
     }
 
     if (preDrawRows.length) {
@@ -412,6 +440,22 @@ async function sync(showMessage = true) {
     }
 
     await loadDraws();
+    const [coverage, previousSync] = await Promise.all([
+      sb.from("draws").select("draw_id,draw_date", { count: "exact", head: true }).eq("user_id", user.id).neq("lifecycle_state", "PRE_DRAW"),
+      sb.from("draw_sync_status").select("initial_backfill_complete").eq("user_id", user.id).maybeSingle()
+    ]);
+    if (previousSync.error) throw previousSync.error;
+    const statusRow = {
+      user_id: user.id, status: "COMPLETED", source: data?.source || "HKJC public GraphQL",
+      draw_count: coverage.count ?? draws.length, oldest_date: draws[0]?.date || null,
+      latest_date: draws.at(-1)?.date || null,
+      initial_backfill_complete: data?.fullBackfill === true || previousSync.data?.initial_backfill_complete === true,
+      last_error: null, synced_at: data?.observedAt || new Date().toISOString()
+    };
+    const { error: statusError } = await sb.from("draw_sync_status").upsert(statusRow, { onConflict: "user_id" });
+    if (coverage.error || statusError) throw coverage.error || statusError;
+    $("dbInfo").textContent = $("dbInfo").textContent.replace(/ · 自動同步.*$/, "");
+    $("dbInfo").textContent += ` · 自動同步歷史回填${statusRow.initial_backfill_complete ? "完成" : "進行中"} · ${new Date(statusRow.synced_at).toLocaleString()}`;
     const added = rows.some(r => !previousIds.has(String(r.id)));
     await generate({ forceFull: false, reason: added ? "new_draw_received" : "hkjc_sync_completed" });
     render();
@@ -420,11 +464,15 @@ async function sync(showMessage = true) {
     if (data?.preDrawWarning) syncNotices.push("下一期查詢暫不可用");
     if (data?.snowballAmountNote) syncNotices.push("HKJC 回應未提供已驗證的金多寶基金金額欄位");
     msg(
-      `同步完成：HKJC 回傳 ${rows.length} 期；下一期預售資料 ${preDrawRows.length} 期；` +
-      `雲端共 ${draws.length} 期。` + (syncNotices.length ? ` 備註：${syncNotices.join("；")}。` : "")
+      `同步完成：HKJC 歷史回傳 ${rows.length} 期；下一期預售資料 ${preDrawRows.length} 期；` +
+      `雲端共 ${draws.length} 期（${draws[0]?.date || "—"} 至 ${draws.at(-1)?.date || "—"}）。` + (syncNotices.length ? ` 備註：${syncNotices.join("；")}。` : "")
     );
 
   } catch (e) {
+
+    try {
+      await sb.from("draw_sync_status").upsert({ user_id: user.id, status: "FAILED", last_error: e.message || String(e), synced_at: new Date().toISOString() }, { onConflict: "user_id" });
+    } catch { /* Keep the original sync error visible when status storage is unavailable. */ }
 
     msg(
       "同步未成功：" +
@@ -510,16 +558,14 @@ $("buildWheel").onclick = () => {
 // ----------------------------------------
 
 function scoreSet(set, features) {
-
-  const recent = Array(50).fill(0);
-  (features.recent || []).forEach(draw => draw.forEach(n => recent[n]++));
   const freq = features.frequency;
   const gap = features.gap;
 
   const f = set.reduce((s, n) =>
     s +
     Math.log1p(freq[n]) * 1.3 +
-    Math.log1p(recent[n]) * 1.1 +
+    Math.log1p(features.mediumFrequency?.[n] || 0) * 0.8 +
+    Math.log1p(features.shortFrequency?.[n] || 0) * 0.5 +
     Math.min(gap[n], 35) * 0.035,
     0
   );
@@ -536,7 +582,7 @@ function scoreSet(set, features) {
   );
 }
 
-function generatePicks(history, candidateCount = 7000, features = engine.fullFeatures(history)) {
+function generatePicks(history, candidateCount = 7000, features = engine.fullFeatures(history, featureWindows()), proxyModel = crowdModel) {
 
   if (history.length < 10) return [];
 
@@ -559,7 +605,7 @@ function generatePicks(history, candidateCount = 7000, features = engine.fullFea
     // Hard anti-crowd constraints: at least three non-birthday numbers and no adjacent pair.
     if (largeNumberCount < 3 || hasConsecutive) continue;
 
-    const crowdEstimate = engine.crowdProxy(a, crowdModel);
+    const crowdEstimate = engine.crowdProxy(a, proxyModel);
     const largeNumberShare = largeNumberCount / 6;
     const uniqueKey = a.join(",");
     candidates.push({
@@ -614,7 +660,9 @@ async function generate(options = {}) {
       dataVersion = Number(versionRow?.current_version ?? draws.length);
       drawVersion = Number(versionRow?.draw_version ?? draws.length);
       const previous = previousRows?.[0];
-      if (!forceFull && previous?.model_version === engine.MODEL_VERSION) {
+      const windows = featureWindows();
+      const sameWindows = previous?.features?.mediumWindow === windows.mediumWindow && previous?.features?.shortWindow === windows.shortWindow;
+      if (!forceFull && previous?.model_version === engine.MODEL_VERSION && sameWindows) {
         if (Number(previous.data_version) === drawVersion && Number(previous.features?.drawCount) === draws.length) {
           featureSet = previous.features;
           mode = "INCREMENTAL";
@@ -626,13 +674,13 @@ async function generate(options = {}) {
       if (featureSet) featureSet.dataVersion = drawVersion;
     } catch (e) {
       runError = e.message || String(e);
-      featureSet = engine.fullFeatures(draws);
+      featureSet = engine.fullFeatures(draws, featureWindows());
       mode = "FULL_RECALCULATION";
     }
   }
 
   if (forceFull || !featureSet) {
-    featureSet = engine.fullFeatures(draws);
+    featureSet = engine.fullFeatures(draws, featureWindows());
     mode = "FULL_RECALCULATION";
   }
   featureSet.dataVersion = drawVersion;
@@ -673,6 +721,10 @@ async function recordEngineRun({ mode, reason, dataVersion, featureSet, runError
 }
 
 async function saveOfficialMarketRows(rows, observedAt) {
+  if (rows.length > 400) {
+    for (let i = 0; i < rows.length; i += 400) await saveOfficialMarketRows(rows.slice(i, i + 400), observedAt);
+    return;
+  }
   const ids = rows.map(r => String(r.id));
   if (!ids.length) return;
   const { data: previous, error: readError } = await sb.from("draw_market_data").select("*").eq("user_id", user.id).in("draw_id", ids);
@@ -884,7 +936,10 @@ function backtest(h) {
     const past = h.slice(0, i);
     const actual = h[i].nums;
 
-    const best = generatePicks(past, 700);
+    const cutoff = h[i].date;
+    const availablePayouts = crowdHistory.filter(row => row.date < cutoff);
+    const historicalCrowdModel = engine.buildCrowdProxyModel(availablePayouts);
+    const best = generatePicks(past, 700, engine.fullFeatures(past, featureWindows()), historicalCrowdModel);
 
     if (!best.length) continue;
 

@@ -95,6 +95,11 @@
 
 <section class="panel hidden" id="statsPanel">
   <h2>歷史統計</h2>
+  <p class="muted">長期頻率使用全部歷史；可調整中期及短期趨勢窗口。</p>
+  <div class="line wrap">
+    <label>中期趨勢（期）<select id="mediumWindow"><option>100</option><option selected>150</option><option>200</option></select></label>
+    <label>短期趨勢（期）<select id="shortWindow"><option>20</option><option selected>35</option><option>50</option></select></label>
+  </div>
   <div id="stats" class="stats"></div>
   <h3>號碼頻率（全部歷史）</h3>
   <div id="freq" class="freq"></div>
@@ -108,9 +113,9 @@
 <section class="panel">
   <h2>使用說明及限制</h2>
   <ul>
-    <li>此版本只在開啟 PWA 時同步；iOS 不保證 App 關閉後背景更新。</li>
-    <li>首次使用請匯入歷史 CSV，建議欄位：draw_id/date/n1/n2/n3/n4/n5/n6（亦支援常見中文欄名）。</li>
-    <li>「更新最新開獎」透過 Supabase Edge Function 查詢 HKJC 公開 GraphQL 端點；若 HKJC 更改介面或限制請求，會顯示錯誤，不會捏造資料。</li>
+    <li>開啟 App 時會自動向 HKJC 查詢並補齊目前可取得的歷史開獎；另有伺服器排程同步設定，部署完成後不依賴 App 開啟。</li>
+    <li>歷史同步只會寫入實際開獎號碼；官方投注額及派彩只在來源實際提供時保存，未公布欄位保留未知。</li>
+    <li>「更新最新開獎」可手動重試同步；CSV 匯入仍可作為選用的備份或修正方式。</li>
     <li>六合彩每期開獎獨立，歷史統計不能提高任何一組號碼的客觀中獎機率。請理性參與。</li>
   </ul>
 </section>
