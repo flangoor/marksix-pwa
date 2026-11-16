@@ -1,0 +1,5 @@
+[functions.sync-hkjc]
+# The function validates user JWTs itself and separately validates the scheduled
+# runner using SYNC_CRON_SECRET. This lets the scheduler call it without putting
+# a service-role credential in the request or in the browser.
+verify_jwt = false

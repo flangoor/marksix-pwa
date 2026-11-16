@@ -2,7 +2,7 @@
 (() => {
   "use strict";
   // Bump this version whenever scoring weights, features, or calibration semantics change.
-  const MODEL_VERSION = "quant-v2-core-4";
+  const MODEL_VERSION = "quant-v2-core-5";
   const DRAW_OUTCOMES = 13983816; // C(49, 6)
   const DIVISION_PROBABILITY = { 1: 1 / DRAW_OUTCOMES, 2: 6 / DRAW_OUTCOMES, 3: 252 / DRAW_OUTCOMES };
   const choose = (n, k) => {
@@ -21,14 +21,13 @@
     return match ? names[match[1]] : null;
   }
 
-  function fullFeatures(draws) {
-    const frequency = Array(50).fill(0), gap = Array(50).fill(draws.length), recent = [];
+  function fullFeatures(draws, { mediumWindow = 150, shortWindow = 35 } = {}) {
+    const frequency = Array(50).fill(0), mediumFrequency = Array(50).fill(0), shortFrequency = Array(50).fill(0), gap = Array(50).fill(draws.length), recent = [];
     for (let i = 0; i < draws.length; i++) {
       if (!validDraw(draws[i].nums)) continue;
       const nums = [...draws[i].nums];
-      recent.push(nums);
       nums.forEach(n => { frequency[n]++; gap[n] = 0; });
-      if (recent.length > 50) recent.shift();
+      recent.push(nums);
     }
     // The newest draw has gap 0; unseen numbers count the full history length.
     for (let n = 1; n <= 49; n++) {
@@ -41,7 +40,10 @@
         if (!found) gap[n] = draws.length;
       }
     }
-    return { drawCount: draws.length, frequency, gap, recent, throughDrawId: draws.at(-1)?.id ?? null };
+    const validRecent = recent.slice(-Math.max(mediumWindow, shortWindow));
+    for (const draw of validRecent.slice(-mediumWindow)) draw.forEach(n => mediumFrequency[n]++);
+    for (const draw of validRecent.slice(-shortWindow)) draw.forEach(n => shortFrequency[n]++);
+    return { drawCount: draws.length, frequency, mediumFrequency, shortFrequency, mediumWindow, shortWindow, gap, recent: validRecent, throughDrawId: draws.at(-1)?.id ?? null };
   }
 
   function addDraw(features, draw) {
@@ -52,7 +54,11 @@
     for (let n = 1; n <= 49; n++) next.gap[n]++;
     draw.nums.forEach(n => { next.frequency[n]++; next.gap[n] = 0; });
     next.recent.push([...draw.nums]);
-    if (next.recent.length > 50) next.recent.shift();
+    if (next.recent.length > Math.max(next.mediumWindow || 150, next.shortWindow || 35)) next.recent.shift();
+    next.mediumFrequency = Array(50).fill(0);
+    next.shortFrequency = Array(50).fill(0);
+    for (const nums of next.recent.slice(-(next.mediumWindow || 150))) nums.forEach(n => next.mediumFrequency[n]++);
+    for (const nums of next.recent.slice(-(next.shortWindow || 35))) nums.forEach(n => next.shortFrequency[n]++);
     return next;
   }
 
